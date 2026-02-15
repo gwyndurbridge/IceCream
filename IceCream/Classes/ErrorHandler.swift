@@ -37,73 +37,90 @@ struct ErrorHandler {
     }
     
     func resultType(with error: Error?) -> CKOperationResultType {
-        guard error != nil else { return .success }
-        
+        guard let error = error else { return .success }
+
         guard let e = error as? CKError else {
-            return .fail(reason: .unknown, message: "The error returned is not a CKError")
+            let result: CKOperationResultType = .fail(reason: .unknown, message: "The error returned is not a CKError")
+            IceCream.shared.errorHandler?(error, "fail", "The error returned is not a CKError")
+            return result
         }
-        
+
         let message = returnErrorMessage(for: e.code)
-        
+
+        let result: CKOperationResultType
+        var classification: String
+
         switch e.code {
-            
+
         // SHOULD RETRY
         case .serviceUnavailable,
              .requestRateLimited,
              .zoneBusy:
-            
+
             // If there is a retry delay specified in the error, then use that.
             let userInfo = e.userInfo
             if let retry = userInfo[CKErrorRetryAfterKey] as? Double {
                 print("ErrorHandler - \(message). Should retry in \(retry) seconds.")
-                return .retry(afterSeconds: retry, message: message)
+                result = .retry(afterSeconds: retry, message: message)
+                classification = "retry"
             } else {
-                return .fail(reason: .unknown, message: message)
+                result = .fail(reason: .unknown, message: message)
+                classification = "fail"
             }
-            
+
         // RECOVERABLE ERROR
         case .networkUnavailable,
              .networkFailure:
             print("ErrorHandler.recoverableError: \(message)")
-            return .recoverableError(reason: .network, message: message)
+            result = .recoverableError(reason: .network, message: message)
+            classification = "recoverableError"
         case .changeTokenExpired:
             print("ErrorHandler.recoverableError: \(message)")
-            return .recoverableError(reason: .changeTokenExpired, message: message)
+            result = .recoverableError(reason: .changeTokenExpired, message: message)
+            classification = "recoverableError"
         case .serverRecordChanged:
             print("ErrorHandler.recoverableError: \(message)")
-            return .recoverableError(reason: .serverRecordChanged, message: message)
+            result = .recoverableError(reason: .serverRecordChanged, message: message)
+            classification = "recoverableError"
         case .partialFailure:
             // Normally it shouldn't happen since if CKOperation `isAtomic` set to true
             if let dictionary = e.userInfo[CKPartialErrorsByItemIDKey] as? NSDictionary {
                 print("ErrorHandler.partialFailure for \(dictionary.count) items; CKPartialErrorsByItemIDKey: \(dictionary)")
             }
-            return .recoverableError(reason: .partialFailure, message: message)
-            
+            result = .recoverableError(reason: .partialFailure, message: message)
+            classification = "recoverableError"
+
         // SHOULD CHUNK IT UP
         case .limitExceeded:
             print("ErrorHandler.Chunk: \(message)")
-            return .chunk
-            
+            result = .chunk
+            classification = "chunk"
+
         // SHARE DATABASE RELATED
         case .alreadyShared,
              .participantMayNeedVerification,
              .referenceViolation,
              .tooManyParticipants:
             print("ErrorHandler.Fail: \(message)")
-            return .fail(reason: .shareRelated, message: message)
-        
+            result = .fail(reason: .shareRelated, message: message)
+            classification = "fail"
+
         // quota exceeded is sort of a special case where the user has to take action(like spare more room in iCloud) before retry
         case .quotaExceeded:
             print("ErrorHandler.Fail: \(message)")
-            return .fail(reason: .quotaExceeded, message: message)
-            
+            result = .fail(reason: .quotaExceeded, message: message)
+            classification = "fail"
+
         // FAIL IS THE FINAL, WE REALLY CAN'T DO MORE
         default:
             print("ErrorHandler.Fail: \(message)")
-            return .fail(reason: .unknown, message: message)
+            result = .fail(reason: .unknown, message: message)
+            classification = "fail"
 
         }
-        
+
+        IceCream.shared.errorHandler?(error, classification, message)
+        return result
     }
     
     func retryOperationIfPossible(retryAfter: Double, block: @escaping () -> ()) {

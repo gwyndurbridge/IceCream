@@ -17,6 +17,11 @@ public class IceCream {
     /// If you don't want to see them in your console, just set `enableLogging` property to false.
     /// The default value is true.
     public var enableLogging: Bool = true
+
+    /// Called for every non-success CloudKit error.
+    /// Set at app launch before sync operations begin.
+    /// Parameters: (error: Error, classification: String, message: String)
+    public var errorHandler: (@Sendable (Error, String, String) -> Void)?
     
 }
 
